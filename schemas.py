@@ -17,8 +17,6 @@ class UserBase(BaseModel):
     """Shared fields used in user-related schemas."""
     email: EmailStr
     full_name: str
-    phone_number: Optional[str] = None
-
 
 class UserCreate(UserBase):
     """Schema for user registration."""
