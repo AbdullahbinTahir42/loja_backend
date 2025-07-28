@@ -221,6 +221,28 @@ def get_items(db: Session = Depends(get_db)):
     items = db.query(models.Items).limit(5).all()
     return items
 
+@app.get("/items/men", response_model=list[schemas.Item])
+def get_men_items(db: Session = Depends(get_db)):
+    items = db.query(models.Items).filter(models.Items.category == "Men").all()
+    return items
+
+@app.get("/items/women", response_model=list[schemas.Item])
+def get_women_items(db: Session = Depends(get_db)):
+    items = db.query(models.Items).filter(models.Items.category == "Women").all()
+    return items
+
+@app.get("/items/accessories", response_model=list[schemas.Item])
+def get_accessories_items(db: Session = Depends(get_db)):
+    items = db.query(models.Items).filter(models.Items.category == "Accessories").all()
+    return items
+
+@app.get("/items/{item_id}", response_model=schemas.Item)
+def get_item(item_id: int, db: Session = Depends(get_db)):
+    """Retrieves a specific item by its ID."""
+    item = db.query(models.Items).filter(models.Items.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
 
 @app.get("/")
 def home():
