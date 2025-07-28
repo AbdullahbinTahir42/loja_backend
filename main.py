@@ -1,11 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, File, UploadFile
+from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer,HTTPAuthorizationCredentials
 from typing import Annotated
 from sqlalchemy.orm import Session
+from fastapi.staticfiles import StaticFiles
+
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import timedelta
 import schemas,auth,models
 from database import SessionLocal, engine, Base
+import logging
+from jose import JWTError, jwt
+import os
+import shutil
+import uuid
+
 
 
 
@@ -24,7 +32,21 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("AUTH_DEBUG")
 
+
+IMAGES_UPLOAD_DIR = "images"
+
+os.makedirs(IMAGES_UPLOAD_DIR, exist_ok=True)
+
+app.mount(f"/{IMAGES_UPLOAD_DIR}", StaticFiles(directory=IMAGES_UPLOAD_DIR), name="images")
+
+security = HTTPBearer(auto_error=False)
 
 def get_db():
     """Dependency to get the database session."""
@@ -38,6 +60,69 @@ def get_user(db: Session, email: str):
     """Fetch a user by email from the database."""
     return db.query(models.User).filter(models.User.email == email).first() 
 
+
+
+async def get_current_active_user(
+    # Correctly type hint the dependency result as an object
+    auth_credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> models.User:
+    """
+    Decodes JWT token to get the current active user.
+    """
+    if auth_credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # The token is a string inside the .credentials attribute
+    token = auth_credentials.credentials
+    logger.info(f"🎫 Token received (first 20 chars): {token[:20]}...")
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        email: str | None = payload.get("sub")
+        
+        if email is None:
+            logger.error("❌ 'sub' claim (email) not found in token payload")
+            raise credentials_exception
+            
+    except JWTError as e:
+        logger.error(f"❌ JWT decode error: {e}")
+        raise credentials_exception
+    
+    user = get_user(db, email=email)
+    
+    if user is None:
+        logger.error(f"❌ User '{email}' not found in database")
+        raise credentials_exception
+        
+    logger.info(f"✅ User authenticated successfully: {user.email}")
+    return user
+
+@app.get("/users/me", response_model=schemas.S_User, tags=["Authentication"])
+async def read_users_me(
+    current_user: models.User = Depends(get_current_active_user)
+):
+    return current_user
+
+def get_current_admin_user(user : models.User = Depends(get_current_active_user)):
+    """Dependency to ensure the current user is an admin."""
+    if user.role != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 @app.post("/register", response_model=schemas.S_User, tags=["Authentication"])
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -64,10 +149,7 @@ async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()], 
     db: Session = Depends(get_db)
 ):
-    """Handles user login and returns a JWT access token."""
     
-    # 3. Use form_data.username to get the email from the form
-    # The React frontend is already sending the email in the 'username' field
     user = get_user(db, email=form_data.username)
     
     # 4. Use form_data.password for the password
@@ -75,16 +157,71 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"}, # Standard practice for 401 errors
+            headers={"WWW-Authenticate": "Bearer"}, 
         )
     
-    # Make sure your create_access_token function is correctly imported from your auth module
+    
     access_token = auth.create_access_token(
         data={"sub": user.email}, 
         expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/admin/create/items", response_model=schemas.Item, tags=["Admin"])
+def create_item(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_admin_user),
+    # Change from a single JSON body to form fields
+    name: str = Form(...),
+    description: str = Form(...),
+    price: int = Form(...),
+    quantity: int = Form(...),
+    category: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """
+    Creates a new item with an image upload.
+    Accepts multipart/form-data.
+    """
+    if price < 0 or quantity < 0:
+        raise HTTPException(status_code=400, detail="Price and quantity must be positive integers")
+    # 1. Generate a unique filename to prevent conflicts
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(IMAGES_UPLOAD_DIR, unique_filename)
+
+    # 2. Save the uploaded file to the server
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 3. Create a dictionary with the item data from the form
+    item_data = {
+        "name": name,
+        "description": description,
+        "price": price,
+        "quantity": quantity,
+        "category": category
+    }
+
+    # 4. Create the SQLAlchemy model instance
+    db_item = models.Items(**item_data, image_name=unique_filename)
+    
+    # 5. Add to the database and commit
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    
+    return db_item
+
+
+@app.get("/items", response_model=list[schemas.Item])
+def get_items(db: Session = Depends(get_db)):
+    """Retrieves the latest 5 items from the database."""
+    items = db.query(models.Items).limit(5).all()
+    return items
+
+
 @app.get("/")
 def home():
     return "ITS REALLY RUNNING!!!!!!"

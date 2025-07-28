@@ -35,3 +35,33 @@ class UserLogin(BaseModel):
     """Schema for user login."""
     username: EmailStr
     password: str
+
+
+
+class ItemBase(BaseModel):
+    """Shared fields used in item-related schemas."""
+ 
+    name: str
+    description: str
+    price: int
+    quantity: int
+    category: str
+
+class ItemCreate(ItemBase):
+    """Schema for creating a new item."""
+    
+    
+    @field_validator('price', 'quantity')
+    def validate_positive(cls, v):
+        """Ensure price and quantity are positive integers."""
+        if v < 0:
+            raise ValueError("Must be a positive integer")
+        return v
+
+class Item(ItemBase):
+    """Schema for item data returned after creation."""
+    id: int
+    image_name: str  # Optional field for image name
+
+    class Config:
+        from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
