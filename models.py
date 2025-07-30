@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
 from database import Base
 
 
@@ -22,3 +22,11 @@ class Items(Base):
     price = Column(Integer)
     quantity = Column(Integer)
     category = Column(String)
+
+class Cart(Base):
+    __tablename__ = 'cart'  # The name of the table in the database
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Foreign key to User
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False)  # Foreign key to Items
+    quantity = Column(Integer)  # Quantity of the item in the cart

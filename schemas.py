@@ -65,3 +65,26 @@ class Item(ItemBase):
 
     class Config:
         from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
+
+
+class CartBase(BaseModel):
+    item_id: int
+    quantity: int
+
+class CartCreate(CartBase):
+    """Schema for creating a new cart item."""
+    
+    @field_validator('quantity')
+    def validate_positive(cls, v):
+        """Ensure quantity is a positive integer."""
+        if v < 0:
+            raise ValueError("Must be a positive integer")
+        return v
+
+class Cart(CartBase):
+    """Schema for cart item data returned after creation."""
+    id: int
+    user_id: int  # Foreign key to User
+
+    class Config:
+        from_attributes = True  # Allows Pydantic to work with SQLAlchemy models

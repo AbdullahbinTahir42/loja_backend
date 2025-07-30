@@ -218,7 +218,7 @@ def create_item(
 @app.get("/items", response_model=list[schemas.Item])
 def get_items(db: Session = Depends(get_db)):
     """Retrieves the latest 5 items from the database."""
-    items = db.query(models.Items).limit(5).all()
+    items = db.query(models.Items).all()
     return items
 
 @app.get("/items/men", response_model=list[schemas.Item])
@@ -243,6 +243,52 @@ def get_item(item_id: int, db: Session = Depends(get_db)):
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item
+
+@app.get("/search/items", response_model=list[schemas.Item])
+def search_items(q: str, db: Session = Depends(get_db)):
+    """
+    Searches for items by name, case-insensitively.
+    """
+    # The '%' are wildcards, so it finds partial matches
+    search_query = f"%{q}%"
+    
+    # Use .ilike() for case-insensitive partial matching
+    items = db.query(models.Items).filter(models.Items.name.ilike(search_query)).all()
+    
+    return items
+
+
+@app.post("/user/cart", response_model=schemas.Cart, tags=["Cart"])
+def add_to_cart(cart: schemas.CartCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    user_cart = models.Cart(
+        user_id=current_user.id,
+        item_id=cart.item_id,
+        quantity=cart.quantity
+    )
+    db.add(user_cart)
+    db.commit()
+    db.refresh(user_cart)
+    return user_cart
+
+
+@app.get("/user/cart", response_model=list[schemas.Cart], tags=["Cart"])
+def get_cart(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    """Retrieves the current user's cart."""
+    cart_items = db.query(models.Cart).filter(models.Cart.user_id == current_user.id).all()
+    return cart_items
+
+
+@app.delete("/user/cart/{cart_item_id}", response_model=schemas.Cart, tags=["Cart"])
+def remove_from_cart(cart_item_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    """Removes an item from the user's cart."""
+    cart_item = db.query(models.Cart).filter(models.Cart.id == cart_item_id, models.Cart.user_id == current_user.id).first()
+    
+    if not cart_item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    
+    db.delete(cart_item)
+    db.commit()
+    return cart_item
 
 @app.get("/")
 def home():

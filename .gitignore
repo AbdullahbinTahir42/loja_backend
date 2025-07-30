@@ -1,2 +1,6 @@
 venv/
 images/
+alembic.ini
+__pycache__/
+alembic/
+*.pyc
