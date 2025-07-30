@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey,UniqueConstraint
+
 from database import Base
 
 
@@ -30,3 +31,5 @@ class Cart(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Foreign key to User
     item_id = Column(Integer, ForeignKey("items.id"), nullable=False)  # Foreign key to Items
     quantity = Column(Integer)  # Quantity of the item in the cart
+
+    __table_args__ = (UniqueConstraint('user_id', 'item_id', name='_user_item_uc'),)
