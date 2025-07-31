@@ -205,7 +205,7 @@ def create_item(
     }
 
     # 4. Create the SQLAlchemy model instance
-    db_item = models.Items(**item_data, image_name=unique_filename)
+    db_item = models.Item(**item_data, image_name=unique_filename)
     
     # 5. Add to the database and commit
     db.add(db_item)
@@ -218,28 +218,28 @@ def create_item(
 @app.get("/items", response_model=list[schemas.Item])
 def get_items(db: Session = Depends(get_db)):
     """Retrieves the latest 5 items from the database."""
-    items = db.query(models.Items).all()
+    items = db.query(models.Item).all()
     return items
 
 @app.get("/items/men", response_model=list[schemas.Item])
 def get_men_items(db: Session = Depends(get_db)):
-    items = db.query(models.Items).filter(models.Items.category == "Men").all()
+    items = db.query(models.Item).filter(models.Item.category == "Men").all()
     return items
 
 @app.get("/items/women", response_model=list[schemas.Item])
 def get_women_items(db: Session = Depends(get_db)):
-    items = db.query(models.Items).filter(models.Items.category == "Women").all()
+    items = db.query(models.Item).filter(models.Item.category == "Women").all()
     return items
 
 @app.get("/items/accessories", response_model=list[schemas.Item])
 def get_accessories_items(db: Session = Depends(get_db)):
-    items = db.query(models.Items).filter(models.Items.category == "Accessories").all()
+    items = db.query(models.Item).filter(models.Item.category == "Accessories").all()
     return items
 
 @app.get("/items/{item_id}", response_model=schemas.Item)
 def get_item(item_id: int, db: Session = Depends(get_db)):
     """Retrieves a specific item by its ID."""
-    item = db.query(models.Items).filter(models.Items.id == item_id).first()
+    item = db.query(models.Item).filter(models.Item.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item
@@ -253,7 +253,7 @@ def search_items(q: str, db: Session = Depends(get_db)):
     search_query = f"%{q}%"
     
     # Use .ilike() for case-insensitive partial matching
-    items = db.query(models.Items).filter(models.Items.name.ilike(search_query)).all()
+    items = db.query(models.Item).filter(models.Item.name.ilike(search_query)).all()
     
     return items
 
@@ -289,6 +289,60 @@ def remove_from_cart(cart_item_id: int, db: Session = Depends(get_db), current_u
     db.delete(cart_item)
     db.commit()
     return cart_item
+
+
+@app.post("/order", response_model=schemas.Order)
+def create_order(
+    order: schemas.OrderCreate, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_current_active_user)
+):
+   
+    
+    # 1. Get all cart items for the currently authenticated user.
+    cart_items = db.query(models.Cart).filter(models.Cart.user_id == current_user.id).all()
+    
+    if not cart_items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cart is empty")
+    
+    # 2. Calculate the total amount based on the prices and quantities in the cart.
+    total_amount = sum(item.item.price * item.quantity for item in cart_items)
+    
+    if total_amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Total amount must be positive")
+    
+    # 3. Create the main Order object with customer details.
+    new_order = models.Order(
+        customer_name=order.customer_name,
+        customer_phone=order.customer_phone,
+        customer_address=order.customer_address,
+        status="pending",  # It's best practice to set a default status on the backend.
+        total_amount=total_amount,
+        customer_id=current_user.id
+    )
+    
+    # 4. Create an OrderItem for each item in the cart and link it to the new Order.
+    # The `cascade` option in your Order model's relationship will handle adding these.
+    for item in cart_items:
+        order_item = models.OrderItem(
+            item_id=item.item_id,
+            quantity=item.quantity,
+            price=item.item.price  # Store the price at the time of the order.
+        )
+        # By appending to the relationship, SQLAlchemy knows to link this
+        # OrderItem to the new_order when it's saved.
+        new_order.items.append(order_item)
+
+    # 5. Add the new_order (which now contains its associated items) to the session.
+    db.add(new_order)
+ 
+    db.query(models.Cart).filter(models.Cart.user_id == current_user.id).delete(synchronize_session=False)
+
+    db.commit()
+
+    db.refresh(new_order)
+    
+    return new_order
 
 @app.get("/")
 def home():

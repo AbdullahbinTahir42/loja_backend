@@ -88,3 +88,26 @@ class Cart(CartBase):
 
     class Config:
         from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
+
+
+
+class OrderBase(BaseModel):
+    customer_name: str
+    customer_phone: str
+    customer_address: str
+    status: str = "pending"
+    
+
+
+class OrderCreate(OrderBase):
+    """Schema for creating a new order."""
+    pass
+    
+class Order(OrderBase):
+    """Schema for order data returned after creation."""
+    id: int
+    customer_id: int  # Foreign key to User
+    order_date: datetime  # Automatically set to current time on creation
+    total_amount: float
+    class Config:
+        from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
