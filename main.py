@@ -271,12 +271,27 @@ def add_to_cart(cart: schemas.CartCreate, db: Session = Depends(get_db), current
     db.refresh(user_cart)
     return user_cart
 
+@app.get("/user/orders", response_model=list[schemas.Order], tags=["Order"])
+def get_user_orders(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    """Retrieves the current user's orders."""
+    orders = db.query(models.Order).filter(models.Order.customer_id == current_user.id).all()
+    return orders
 
 @app.get("/user/cart", response_model=list[schemas.Cart], tags=["Cart"])
 def get_cart(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
     """Retrieves the current user's cart."""
     cart_items = db.query(models.Cart).filter(models.Cart.user_id == current_user.id).all()
     return cart_items
+
+@app.get("/user/order/items/{order_id}", response_model=list[schemas.OrderItem], tags=["Order"])
+def get_order_items(order_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    """Retrieves the items for a specific order."""
+    order = db.query(models.Order).filter(models.Order.id == order_id, models.Order.customer_id == current_user.id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    return order.items
+
 
 
 @app.delete("/user/cart/{cart_item_id}", response_model=schemas.Cart, tags=["Cart"])
@@ -382,6 +397,24 @@ def get_admin_order_items(order_id: int, db: Session = Depends(get_db), user: mo
     """Retrieves all items for a specific order."""
     order_items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order_id).all()
     return order_items
+
+@app.post("/admin/order/{order_id}", response_model=schemas.Order, tags=["Admin"])
+def Admin_update_order_status( 
+    data: schemas.AdminOrderStatus, 
+    db: Session = Depends(get_db), 
+    user: models.User = Depends(get_current_admin_user)
+):
+    """Updates the status of an order."""
+    order = db.query(models.Order).filter(models.Order.id == data.id).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    order.status = data.status
+    db.commit()
+    db.refresh(order)
+    
+    return order
 
 @app.get("/")
 def home():

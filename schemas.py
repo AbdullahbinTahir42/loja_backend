@@ -127,5 +127,13 @@ class OrderItemCreate(OrderItemBase):
 class OrderItem(OrderItemBase):
     """Schema for order item data returned after creation."""
     id: int
+     
     class Config:
         from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
+
+
+
+class AdminOrderStatus(BaseModel):
+    id: int
+    status: str
+
