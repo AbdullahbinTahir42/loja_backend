@@ -26,6 +26,7 @@ class UserCreate(UserBase):
 
 class S_User(UserBase):
     """Schema for user data returned after registration."""
+    id: int
     role: str
 
     class Config:

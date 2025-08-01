@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, File
 from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer,HTTPAuthorizationCredentials
 from typing import Annotated
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from fastapi.staticfiles import StaticFiles
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -329,6 +330,7 @@ def create_order(
             quantity=item.quantity,
             price=item.item.price  # Store the price at the time of the order.
         )
+        item.item.quantity -= item.quantity
         # By appending to the relationship, SQLAlchemy knows to link this
         # OrderItem to the new_order when it's saved.
         new_order.items.append(order_item)
@@ -343,6 +345,37 @@ def create_order(
     db.refresh(new_order)
     
     return new_order
+
+
+@app.get("/admin/stats", tags=["Admin"])
+def get_admin_stats(db: Session = Depends(get_db), user: models.User = Depends(get_current_admin_user)):
+    """
+    Returns statistics for the admin dashboard.
+    """
+    total_users = db.query(models.User).count()
+    total_items = db.query(models.Item).count()
+    total_orders = db.query(models.Order).count()
+    total_revenue = db.query(models.Order).filter(models.Order.status == "completed").with_entities(func.sum(models.Order.total_amount)).scalar() or 0
+    
+    return {
+        "total_users": total_users,
+        "total_items": total_items,
+        "total_orders": total_orders,
+        "total_revenue": total_revenue
+    }
+
+@app.get("/admin/orders", response_model=list[schemas.Order], tags=["Admin"])
+def get_admin_orders(db: Session = Depends(get_db), user: models.User = Depends(get_current_admin_user)):
+   
+    orders = db.query(models.Order).all()
+    return orders
+
+@app.get("/admin/users", response_model=list[schemas.S_User], tags=["Admin"])
+def get_admin_users(db: Session = Depends(get_db), user: models.User = Depends(get_current_admin_user)):
+    """Retrieves all users for admin view."""
+    users = db.query(models.User).filter(models.User.role != 'admin').all()
+    
+    return users
 
 @app.get("/")
 def home():
