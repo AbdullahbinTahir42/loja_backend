@@ -112,3 +112,20 @@ class Order(OrderBase):
     total_amount: float
     class Config:
         from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
+
+    
+class OrderItemBase(BaseModel):
+    order_id: int
+    item_id: int
+    quantity: int
+    price: float  # Price of the item at the time of order
+
+class OrderItemCreate(OrderItemBase):
+    """Schema for creating a new order item."""
+    pass
+
+class OrderItem(OrderItemBase):
+    """Schema for order item data returned after creation."""
+    id: int
+    class Config:
+        from_attributes = True  # Allows Pydantic to work with SQLAlchemy models

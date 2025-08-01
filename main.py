@@ -377,6 +377,12 @@ def get_admin_users(db: Session = Depends(get_db), user: models.User = Depends(g
     
     return users
 
+@app.get("/admin/order/items/{order_id}", response_model=list[schemas.OrderItem], tags=["Admin"])
+def get_admin_order_items(order_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_admin_user)):
+    """Retrieves all items for a specific order."""
+    order_items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order_id).all()
+    return order_items
+
 @app.get("/")
 def home():
     return "ITS REALLY RUNNING!!!!!!"
